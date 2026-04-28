@@ -6,7 +6,9 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-DB_PATH = os.environ.get("DB_PATH", str(Path(__file__).parent / "data" / "subscriptions.db"))
+# 优先用环境变量 DB_PATH，其次用 /data（Zeabur Volume 挂载点），最后用本地 data 目录
+_default_db = "/data/subscriptions.db" if os.path.isdir("/data") else str(Path(__file__).parent / "data" / "subscriptions.db")
+DB_PATH = os.environ.get("DB_PATH", _default_db)
 
 
 def get_conn():

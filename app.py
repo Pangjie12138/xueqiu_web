@@ -1,9 +1,10 @@
-"""
+"""  
 雪球组合调仓监控 — Web 服务
 Flask 主应用
 """
 import os
 import uuid
+from datetime import datetime
 from flask import Flask, request, jsonify, render_template
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -24,6 +25,12 @@ db.init_db()
 def index():
     stats = db.get_stats()
     return render_template("index.html", stats=stats)
+
+
+@app.route("/health")
+def health():
+    """健康检查端点，也用于外部 cron 保活"""
+    return jsonify({"status": "ok", "time": datetime.now().isoformat()})
 
 
 @app.route("/unsubscribe/<token>")
@@ -91,13 +98,21 @@ def api_stats():
 
 # ── 手动触发 ──────────────────────────────────────────────────────────────────
 
-@app.route("/api/trigger", methods=["POST"])
+@app.route("/api/trigger", methods=["POST", "GET"])
 def api_trigger():
-    data = request.get_json(silent=True) or {}
+    """手动触发监控任务，支持 GET（方便外部 cron 调用）和 POST"""
     admin_key = os.environ.get("ADMIN_KEY", "")
     if not admin_key:
         return jsonify({"ok": False, "error": "ADMIN_KEY not set"}), 500
-    if data.get("key") != admin_key:
+
+    # GET 请求从 query param 获取 key，POST 从 body
+    if request.method == "GET":
+        key = request.args.get("key", "")
+    else:
+        data = request.get_json(silent=True) or {}
+        key = data.get("key", "")
+
+    if key != admin_key:
         return jsonify({"ok": False, "error": "unauthorized"}), 403
 
     job_scheduler.run_monitor_job()
