@@ -1,11 +1,10 @@
 """
 雪球组合调仓监控 — Web 服务
-Flask 主应用
+Flask 主应用，兼容 Vercel Serverless 和本地运行
 """
 import os
 import uuid
-from flask import Flask, request, jsonify, render_template, redirect, url_for
-from apscheduler.schedulers.background import BackgroundScheduler
+from flask import Flask, request, jsonify, render_template
 
 import db
 import xueqiu_api
@@ -71,7 +70,7 @@ def api_subscribe():
         return jsonify({"ok": False, "error": "每个邮箱最多订阅 10 个组合"}), 400
 
     token = uuid.uuid4().hex
-    result = db.add_subscription(
+    db.add_subscription(
         email=email,
         cube_symbol=symbol,
         cube_name=info.get("name", ""),
@@ -104,47 +103,43 @@ def api_stats():
     return jsonify(db.get_stats())
 
 
+# ── Vercel Cron 定时任务入口 ──────────────────────────────────────────────────
+
+@app.route("/api/cron", methods=["GET"])
+def api_cron():
+    """
+    Vercel Cron Job 入口
+    vercel.json 配置 schedule: "0 10 * * *" (UTC 10:00 = 北京 18:00)
+    也可通过 CRON_SECRET 保护，防止外部调用
+    """
+    cron_secret = os.environ.get("CRON_SECRET", "")
+    if cron_secret:
+        auth = request.headers.get("Authorization", "")
+        if auth != f"Bearer {cron_secret}":
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    job_scheduler.run_monitor_job()
+    return jsonify({"ok": True, "message": "监控任务执行完成"})
+
+
 # ── 手动触发（管理用）────────────────────────────────────────────────────────
 
 @app.route("/api/trigger", methods=["POST"])
 def api_trigger():
-    """手动触发一次监控任务（需要 admin key）"""
+    """手动触发一次监控任务"""
     data = request.get_json(silent=True) or {}
     admin_key = os.environ.get("ADMIN_KEY", "")
-    if admin_key and data.get("key") != admin_key:
-        return jsonify({"ok": False, "error": "unauthorized"}), 403
     if not admin_key:
         return jsonify({"ok": False, "error": "ADMIN_KEY not set"}), 500
+    if data.get("key") != admin_key:
+        return jsonify({"ok": False, "error": "unauthorized"}), 403
 
-    import threading
-    threading.Thread(target=job_scheduler.run_monitor_job, daemon=True).start()
-    return jsonify({"ok": True, "message": "监控任务已触发，后台执行中"})
-
-
-# ── 定时任务 ──────────────────────────────────────────────────────────────────
-
-def start_scheduler():
-    """启动定时任务"""
-    sched = BackgroundScheduler()
-    hour = int(os.environ.get("MONITOR_HOUR", "18"))
-    minute = int(os.environ.get("MONITOR_MINUTE", "0"))
-    sched.add_job(
-        job_scheduler.run_monitor_job,
-        "cron",
-        hour=hour,
-        minute=minute,
-        id="daily_monitor",
-    )
-    sched.start()
-    print(f"✅ 定时任务已启动：每天 {hour:02d}:{minute:02d} 执行调仓监控")
-
-
-# gunicorn --preload 模式下启动定时任务（只在主进程执行一次）
-start_scheduler()
+    job_scheduler.run_monitor_job()
+    return jsonify({"ok": True, "message": "监控任务执行完成"})
 
 
 # ── 本地开发 ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "5000"))
+    port = int(os.environ.get("PORT", "8080"))
     app.run(host="0.0.0.0", port=port, debug=True)
