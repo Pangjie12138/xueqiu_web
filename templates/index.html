@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>雪球组合调仓监控</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .container { width: 100%; max-width: 520px; }
+
+  /* Logo & Title */
+  .hero { text-align: center; margin-bottom: 32px; color: white; }
+  .hero h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  .hero p { font-size: 15px; opacity: 0.85; line-height: 1.6; }
+
+  /* Card */
+  .card {
+    background: white; border-radius: 16px; padding: 32px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; margin-bottom: 24px; border-bottom: 2px solid #f0f0f0; }
+  .tab {
+    flex: 1; padding: 10px; text-align: center; font-size: 14px; font-weight: 600;
+    color: #999; cursor: pointer; border-bottom: 2px solid transparent;
+    margin-bottom: -2px; transition: all 0.2s;
+  }
+  .tab.active { color: #667eea; border-bottom-color: #667eea; }
+  .tab:hover { color: #667eea; }
+
+  /* Forms */
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .form-group { margin-bottom: 16px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; }
+  input {
+    width: 100%; padding: 12px 14px; border: 2px solid #e8e8e8; border-radius: 10px;
+    font-size: 15px; transition: border-color 0.2s; outline: none;
+  }
+  input:focus { border-color: #667eea; }
+  input::placeholder { color: #bbb; }
+
+  .hint { font-size: 12px; color: #999; margin-top: 4px; }
+  .hint a { color: #667eea; text-decoration: none; }
+
+  .btn {
+    width: 100%; padding: 14px; border: none; border-radius: 10px;
+    font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+    margin-top: 8px;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, #667eea, #764ba2); color: white;
+  }
+  .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .btn-secondary {
+    background: #f5f5f5; color: #666;
+  }
+  .btn-secondary:hover { background: #eee; }
+
+  /* Result */
+  .result {
+    margin-top: 16px; padding: 14px; border-radius: 10px; font-size: 14px;
+    display: none; line-height: 1.6;
+  }
+  .result.success { background: #e8f5e9; color: #2e7d32; display: block; }
+  .result.error { background: #ffebee; color: #c62828; display: block; }
+
+  /* Validation preview */
+  .preview {
+    margin-top: 12px; padding: 12px; background: #f8f9ff; border-radius: 8px;
+    border: 1px solid #e8ecff; display: none; font-size: 13px; color: #444;
+  }
+  .preview.show { display: block; }
+  .preview .name { font-weight: 600; color: #333; font-size: 15px; }
+  .preview .meta { color: #888; margin-top: 4px; }
+
+  /* My subscriptions */
+  .sub-list { margin-top: 12px; }
+  .sub-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 12px; background: #f8f9ff; border-radius: 8px; margin-bottom: 8px;
+    font-size: 14px;
+  }
+  .sub-item .name { font-weight: 600; }
+  .sub-item .symbol { color: #888; font-size: 12px; }
+
+  /* Stats */
+  .stats {
+    text-align: center; margin-top: 24px; color: rgba(255,255,255,0.7);
+    font-size: 13px;
+  }
+
+  /* Spinner */
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff;
+    border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite;
+    vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="hero">
+    <h1>📊 雪球组合调仓监控</h1>
+    <p>订阅你关注的雪球组合，有调仓时自动邮件通知<br>免费 · 无需注册 · 随时取消</p>
+  </div>
+
+  <div class="card">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('subscribe')">订阅组合</div>
+      <div class="tab" onclick="switchTab('manage')">我的订阅</div>
+    </div>
+
+    <!-- 订阅 Tab -->
+    <div id="tab-subscribe" class="tab-content active">
+      <div class="form-group">
+        <label>雪球组合编号</label>
+        <input type="text" id="cube_symbol" placeholder="例如：ZH1004909" oninput="onSymbolInput()">
+        <div class="hint">
+          打开雪球组合页面，URL 中 /P/<b>ZH1234567</b> 就是编号
+          &nbsp;·&nbsp; <a href="https://xueqiu.com/cubes/discover" target="_blank">去雪球发现组合 →</a>
+        </div>
+        <div id="preview" class="preview"></div>
+      </div>
+
+      <div class="form-group">
+        <label>接收通知的邮箱</label>
+        <input type="email" id="email" placeholder="your@email.com">
+      </div>
+
+      <button class="btn btn-primary" id="btn-subscribe" onclick="subscribe()">订阅</button>
+      <div id="result" class="result"></div>
+    </div>
+
+    <!-- 管理 Tab -->
+    <div id="tab-manage" class="tab-content">
+      <div class="form-group">
+        <label>输入邮箱查看已订阅的组合</label>
+        <input type="email" id="manage-email" placeholder="your@email.com">
+      </div>
+      <button class="btn btn-secondary" onclick="loadSubscriptions()">查询</button>
+      <div id="sub-list" class="sub-list"></div>
+      <div id="manage-result" class="result"></div>
+    </div>
+  </div>
+
+  <div class="stats">
+    已有 <strong>{{ stats.total_users }}</strong> 人订阅了
+    <strong>{{ stats.total_symbols }}</strong> 个组合
+  </div>
+</div>
+
+<script>
+  let validateTimer = null;
+
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach((t, i) => {
+      t.classList.toggle('active', (name === 'subscribe' && i === 0) || (name === 'manage' && i === 1));
+    });
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+  }
+
+  function onSymbolInput() {
+    clearTimeout(validateTimer);
+    const symbol = document.getElementById('cube_symbol').value.trim().toUpperCase();
+    const preview = document.getElementById('preview');
+    if (!symbol || symbol.length < 4) {
+      preview.classList.remove('show');
+      return;
+    }
+    validateTimer = setTimeout(() => validateSymbol(symbol), 600);
+  }
+
+  async function validateSymbol(symbol) {
+    const preview = document.getElementById('preview');
+    preview.innerHTML = '验证中...';
+    preview.classList.add('show');
+
+    try {
+      const resp = await fetch('/api/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cube_symbol: symbol }),
+      });
+      const data = await resp.json();
+      if (data.valid) {
+        preview.innerHTML = `
+          <div class="name">✅ ${data.name}</div>
+          <div class="meta">主理人：${data.owner || '未知'} · 总收益：${data.total_gain}% · 净值：${data.net_value}</div>
+        `;
+      } else {
+        preview.innerHTML = `<span style="color:#c62828">❌ ${data.error || '组合不存在'}</span>`;
+      }
+    } catch (e) {
+      preview.innerHTML = '<span style="color:#c62828">验证失败，请重试</span>';
+    }
+  }
+
+  async function subscribe() {
+    const btn = document.getElementById('btn-subscribe');
+    const result = document.getElementById('result');
+    const symbol = document.getElementById('cube_symbol').value.trim().toUpperCase();
+    const email = document.getElementById('email').value.trim();
+
+    if (!symbol) { showResult(result, '请输入组合编号', false); return; }
+    if (!email || !email.includes('@')) { showResult(result, '请输入有效的邮箱地址', false); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>订阅中...';
+
+    try {
+      const resp = await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cube_symbol: symbol, email: email }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        showResult(result, `🎉 订阅成功！已订阅 "${data.cube_name}"，有调仓时会邮件通知你。`, true);
+        document.getElementById('cube_symbol').value = '';
+        document.getElementById('preview').classList.remove('show');
+      } else {
+        showResult(result, data.error || '订阅失败', false);
+      }
+    } catch (e) {
+      showResult(result, '网络错误，请重试', false);
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '订阅';
+  }
+
+  async function loadSubscriptions() {
+    const email = document.getElementById('manage-email').value.trim();
+    const result = document.getElementById('manage-result');
+    const list = document.getElementById('sub-list');
+
+    if (!email) { showResult(result, '请输入邮箱', false); return; }
+
+    try {
+      const resp = await fetch('/api/my-subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email }),
+      });
+      const data = await resp.json();
+      if (data.ok && data.subscriptions.length > 0) {
+        list.innerHTML = data.subscriptions.map(s =>
+          `<div class="sub-item">
+            <div><span class="name">${s.cube_name || s.cube_symbol}</span><br><span class="symbol">${s.cube_symbol}</span></div>
+            <div style="color:#888;font-size:12px">${s.created_at ? s.created_at.split('T')[0] : ''} 订阅</div>
+          </div>`
+        ).join('');
+        result.className = 'result';
+        result.style.display = 'none';
+      } else if (data.ok) {
+        list.innerHTML = '';
+        showResult(result, '该邮箱暂无订阅', false);
+      }
+    } catch (e) {
+      showResult(result, '查询失败，请重试', false);
+    }
+  }
+
+  function showResult(el, msg, success) {
+    el.textContent = msg;
+    el.className = 'result ' + (success ? 'success' : 'error');
+  }
+
+  // Enter 键提交
+  document.getElementById('email').addEventListener('keydown', e => { if (e.key === 'Enter') subscribe(); });
+  document.getElementById('manage-email').addEventListener('keydown', e => { if (e.key === 'Enter') loadSubscriptions(); });
+</script>
+</body>
+</html>
